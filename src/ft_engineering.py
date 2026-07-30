@@ -14,6 +14,7 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import (
     FunctionTransformer,
     OneHotEncoder,
@@ -369,3 +370,110 @@ def construir_pipeline_preprocesamiento(
     )
 
     return pipeline_preprocesamiento
+
+
+def preparar_datos_modelado(
+    df: pd.DataFrame,
+    test_size: float = 0.20,
+    random_state: int = 42
+):
+    """
+    Prepara los conjuntos de entrenamiento y evaluación para el modelado.
+
+    El procedimiento incluye:
+
+    1. Separación de las variables predictoras y la variable objetivo.
+    2. División estratificada en entrenamiento y evaluación.
+    3. Identificación de las columnas numéricas y categóricas.
+    4. Construcción y ajuste del pipeline de preprocesamiento utilizando
+       exclusivamente los datos de entrenamiento.
+    5. Transformación de ambos conjuntos con el mismo pipeline.
+    6. Conversión de los resultados en DataFrames con nombres de columnas.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataset original que contiene las variables predictoras y las
+        columnas necesarias para construir la variable objetivo.
+
+    test_size : float, default=0.20
+        Proporción de observaciones destinadas al conjunto de evaluación.
+
+    random_state : int, default=42
+        Semilla utilizada para garantizar la reproducibilidad de la división.
+
+    Returns
+    -------
+    X_train_preprocesado : pd.DataFrame
+        Variables predictoras transformadas del conjunto de entrenamiento.
+
+    X_test_preprocesado : pd.DataFrame
+        Variables predictoras transformadas del conjunto de evaluación.
+
+    y_train : pd.Series
+        Variable objetivo del conjunto de entrenamiento.
+
+    y_test : pd.Series
+        Variable objetivo del conjunto de evaluación.
+
+    pipeline_preprocesamiento : sklearn.pipeline.Pipeline
+        Pipeline ajustado con los datos de entrenamiento.
+    """
+
+    # Separar variables predictoras y variable objetivo
+    X, y = separar_variables_objetivo(df)
+
+    # Dividir los datos conservando la proporción de la variable objetivo
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y
+    )
+
+    # Aplicar temporalmente las reglas específicas para identificar
+    # las columnas que llegarán al preprocesador
+    X_train_con_reglas = aplicar_reglas_especificas(X_train.copy())
+
+    columnas_numericas, columnas_categoricas = identificar_tipos_columnas(
+        X_train_con_reglas
+    )
+
+    # Construir el pipeline completo
+    pipeline_preprocesamiento = construir_pipeline_preprocesamiento(
+        columnas_numericas=columnas_numericas,
+        columnas_categoricas=columnas_categoricas
+    )
+
+    # Ajustar solamente con entrenamiento y transformar ambos conjuntos
+    X_train_transformado = pipeline_preprocesamiento.fit_transform(X_train)
+    X_test_transformado = pipeline_preprocesamiento.transform(X_test)
+
+    # Obtener los nombres de las características generadas por el
+    # último componente del pipeline
+    preprocesador_ajustado = pipeline_preprocesamiento.steps[-1][1]
+    nombres_caracteristicas = (
+        preprocesador_ajustado.get_feature_names_out()
+    )
+
+    # Convertir los resultados en DataFrames
+    X_train_preprocesado = pd.DataFrame(
+        X_train_transformado,
+        columns=nombres_caracteristicas,
+        index=X_train.index
+    )
+
+    X_test_preprocesado = pd.DataFrame(
+        X_test_transformado,
+        columns=nombres_caracteristicas,
+        index=X_test.index
+    )
+
+    return (
+        X_train_preprocesado,
+        X_test_preprocesado,
+        y_train,
+        y_test,
+        pipeline_preprocesamiento
+    )
